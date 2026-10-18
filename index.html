@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH 社区插件索引 / DSH Community Plugin Index</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+         font: 16px/1.65 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  pre { background: rgba(127,127,127,.14); padding: .85rem 1rem; border-radius: 8px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid rgba(127,127,127,.3); }
+  .warn { border-left: 4px solid #d08700; background: rgba(208,135,0,.1); padding: .75rem 1rem; border-radius: 0 8px 8px 0; }
+  .url { font-size: 1.05rem; font-weight: 600; }
+  button { font: inherit; padding: .35rem .8rem; border-radius: 6px; border: 1px solid rgba(127,127,127,.5);
+           background: transparent; cursor: pointer; }
+  ol, ul { padding-left: 1.3rem; }
+</style>
+</head>
+<body>
+
+<h1>DSH 社区插件索引</h1>
+<p class="sub">DSH Community Plugin Index · format 1 · generated from public metadata</p>
+
+<h2>索引源地址 / Index source URL</h2>
+<pre class="url"><code id="url">…/index.json</code></pre>
+<p><button id="copy" type="button">复制地址</button>
+<a href="index.json">查看 index.json</a> · <a href="stats.json">stats.json</a></p>
+
+<h2>在 DSH 里添加 / Add it in DSH</h2>
+<ol>
+  <li>打开 <strong>插件（Plugins）</strong> 页面，如未开启实验特性，先在 <strong>更多 → Experimental plugins</strong> 中打开 <strong>Custom plugin markets</strong>。</li>
+  <li>切到 <strong>发现（Discover）</strong> 标签页。</li>
+  <li>点击 <strong>Add index source（添加索引源）</strong>，粘贴上面的地址并保存。</li>
+  <li>即可在发现页搜索、按分类/标签筛选、排序，并安装任意兼容版本。</li>
+</ol>
+<p>添加后在 Host 侧核对：<code>plugin_market list_indexes()</code> 应返回本源的 URL 与标题。</p>
+
+<h2>内容 / Contents</h2>
+<table id="stats">
+  <tr><th>项目</th><th>值</th></tr>
+  <tr><td>收录插件</td><td>2951</td></tr>
+  <tr><td>收录版本</td><td>12613</td></tr>
+  <tr><td>分类 / 标签 / 排序键</td><td>23 / 11 / stars, downloads</td></tr>
+  <tr><td>上游目录条目</td><td>5786（其中 2967 条发布到 npm）</td></tr>
+  <tr><td>生成时间</td><td>2026-10-18</td></tr>
+</table>
+
+<h2>数据来源 / Data sources</h2>
+<ul>
+  <li>目录：<a href="https://awesome-dsh-plugin.com/plugins.json">awesome-dsh-plugin.com/plugins.json</a>（第三方聚合）</li>
+  <li>版本与发布时间：npm registry 的 packument（<code>dist-tags</code> / <code>time</code> / <code>engines</code>）</li>
+  <li>图标：<code>https://github.com/&lt;owner&gt;.png</code></li>
+</ul>
+<p>本索引由这些公开元数据生成，未经逐一核实；<strong>与 DeepSeek 官方无关</strong>，也不是官方索引源。</p>
+
+<h2 class="warn">安全提示 / Security notice</h2>
+<div class="warn">
+  <p><strong>索引只是目录，不是安全审计。</strong>DeepSeek 官方文档明确写道：市场是第三方内容，DSH 只检查文件格式，不核实这些声明。第三方插件会以你的用户权限运行代码（包括安装期脚本），安装前请查看确认对话框中的安装规格并自行判断。</p>
+  <p>本页数据可能过期或含错误，请以插件自身的仓库与发布包为准。</p>
+</div>
+
+<p><a href="https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/HEAD/docs/user/guide/plugin-market.md">DSH 官方文档：Plugin markets</a></p>
+
+<script>
+  var base = location.href.replace(/[^/]*$/, '');
+  var url = base + 'index.json';
+  document.getElementById('url').textContent = url;
+  document.getElementById('copy').onclick = function () {
+    navigator.clipboard.writeText(url).then(function () {
+      document.getElementById('copy').textContent = '已复制 ✓';
+    });
+  };
+  fetch('stats.json').then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+    if (!s) return;
+    var rows = [
+      ['收录插件', s.included], ['收录版本', s.versionsTotal],
+      ['上游目录条目', s.catalogEntries + '（' + s.npmCandidates + ' 条发布到 npm）'],
+      ['未收录', 'npm 上无可用版本 ' + s.noUsableVersion + ' 条'],
+      ['生成时间', new Date(s.generatedAt).toISOString().slice(0, 10)],
+    ];
+    document.getElementById('stats').innerHTML = '<tr><th>项目</th><th>值</th></tr>' +
+      rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'; }).join('');
+  });
+</script>
+</body>
+</html>

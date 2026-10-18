@@ -1,0 +1,16 @@
+{
+  "generatedAt": "2026-10-18T04:25:08.834Z",
+  "catalogUrl": "https://awesome-dsh-plugin.com/plugins.json",
+  "catalogUpdated": "2026-10-17",
+  "outputBytes": 4430373,
+  "catalogEntries": 5786,
+  "npmCandidates": 2967,
+  "noCache": 0,
+  "notFoundOnNpm": 0,
+  "noUsableVersion": 16,
+  "included": 2951,
+  "versionsTotal": 12613,
+  "versionsWithoutDshField": 4,
+  "catalogVersionMismatch": 1,
+  "unparsable": 0
+}
