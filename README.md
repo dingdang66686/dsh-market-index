@@ -12,14 +12,14 @@ An addable plugin-market index for **DeepSeek Harness → Plugins → Discover �
 添加这个地址作为索引源 / Add this URL as an index source:
 
 ```
-https://cdn.jsdelivr.net/gh/dingdang66686/dsh-market-index@main/index.json       # CDN，application/json（推荐）
-https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json  # 立即可用（text/plain）
+https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json  # 最及时：push 后几秒内生效
+https://cdn.jsdelivr.net/gh/dingdang66686/dsh-market-index@main/index.json       # 全球 CDN，application/json
 https://dingdang66686.github.io/dsh-market-index/index.json                       # 需在 Settings → Pages 开启
 ```
 
-已实测：以上地址返回 `200`、**不重定向**，字节数与仓库中的文件逐字节一致（sha256 校验），并用官方解析器重新校验通过。CDN 地址带 `application/json`，DSH 读索引时最省事，推荐用第一条。
+已实测：raw 地址返回 `200`、**不重定向**，与仓库中的 `index.json` 逐字节一致（sha256 校验），并用官方解析器重新校验通过。**想要最新一版就用第一条**：jsDelivr 对 `@main` 的长期缓存最长 12 小时，每次流水线都会调用它的 purge 接口刷新，但 purge 也可能被限流，那时它会继续返回上一版。CDN 地址带 `application/json`，有些环境下读取更省事。
 
-内容 / Contents：**2951 个插件 / 12613 个版本**，23 个分类、11 个能力标签，排序键 `stars`、`downloads`。实时统计见 [stats.json](stats.json)，最近一次运行见 [run-report.json](run-report.json)。
+内容 / Contents：**2951 个插件 / 12634 个版本**，23 个分类、11 个能力标签，排序键 `stars`、`downloads`。实时统计见 [stats.json](stats.json)，最近一次运行见 [run-report.json](run-report.json)。
 
 ## 自动更新 / Automated updates
 
@@ -38,10 +38,10 @@ https://dingdang66686.github.io/dsh-market-index/index.json                     
 3. `node tools/validate-index.mjs` — 用官方发布的 `@deepseek-ai/dsh-plugin-market-index` 解析器逐条校验（字节数上限、`format === 1`、`localizedText` 必须含 `en`、版本必须是精确 SemVer、git 源 commit 必须是 40 位小写 hex……）。
 4. `node tools/run-report.mjs` — 写 `run-report.json`，并输出到 Actions 的 Job Summary。
 5. `node tools/commit-decision.mjs` 决定这次要不要提交：`index.json` 的字节变了就提交；没变、且仓库里已提交的 `run-report.json` 还很新（< 7 天）就跳过提交。原因：`stats.json` 与 `run-report.json` 带时间戳，无条件提交会变成每天两次的无意义提交；而完全不提交又可能让 GitHub 因为 60 天无活动停掉定时任务，所以保留“最多 7 天一次”的心跳。提交信息带 `[skip ci]`，避免这种纯数据推送再触发一遍 `Validate index`（同一次运行末尾的 `verify` 已经在做线上校验）。
-6. 校验发布结果：对 raw 与 jsDelivr 两个地址断言 `200`、**不重定向**、字节数与 sha256 与仓库文件完全一致（jsDelivr 先调一次公开的 purge 接口，避免 `@main` 最长 12 小时的缓存）。
+6. 校验发布结果：对 **raw 地址**断言 `200`、**不重定向**、字节数与 sha256 与本次构建完全一致。期望值取自构建步骤记录的摘要（`steps.digest.outputs`），而不是 `verify` 自己那份 checkout —— 否则在“刚推送完”的运行里会拿上一版做比较，恰好在最需要校验的时候误报。jsDelivr 与 Pages 两个地址也会被检查，但只产出 `::warning::` 注解、不影响运行结论：它们的时效由第三方缓存决定（jsDelivr 缓存 `@main` 最长 12 小时，purge 也可能被限流），把运行变红并不会让它们更快收敛。purge 步骤会重试 3 次并打印返回内容，便于排查。
 7. 顺带把 `index.html`、`index.json`、`stats.json`、`run-report.json` 发布到 GitHub Pages（可选步骤，见下）。
 
-`.github/workflows/validate.yml` 是轻量门禁：数据或工具一有改动就跑一遍解析校验，并（在非 PR 的情况下）确认线上地址仍然返回这些字节。
+`.github/workflows/validate.yml` 是轻量门禁：数据或工具一有改动就跑一遍解析校验，并（在非 PR 的情况下）确认 raw 地址仍然返回这些字节；CDN 与 Pages 只作提示。
 
 ### 工作流实现细节 / Workflow implementation notes
 
@@ -49,6 +49,7 @@ https://dingdang66686.github.io/dsh-market-index/index.json                     
 - 安装依赖用 `pnpm install --frozen-lockfile --config.node-linker=hoisted`：锁文件固定了解析库的完整性哈希，`hoisted` 布局与本地验证过的布局一致。
 - ⚠️ pnpm 11 默认不安装“发布时间不足 24 小时”的版本（`minimum-release-age=1440` 分钟）。`pnpm-workspace.yaml` 里已经为 `@deepseek-ai/*` 两个包写了两条 `minimumReleaseAgeExclude`；将来升级 `@deepseek-ai/dsh-plugin-market-index`（例如 DSH 运行时离开 `0.2.1-rc.2` 时）如果 `pnpm install` 报 `ERR_PNPM_NO_MATURE_MATCHING_VERSION`，把新版本号加进那份白名单即可。不要为了绕开它把 `minimum-release-age` 设为 0，那会去掉一道供应链防护。
 - `verify` 用 `git show HEAD:<文件>` 取上一次提交的内容（1 层浅克隆里同样可用），不使用 `git log` 这类历史查询——浅克隆下 `git log -- <文件>` 可能什么都查不到。
+- 构建与校验之间的“期望值”通过 job output 传递：`build` 把 `sha256sum`/`wc -c` 的结果写进 `steps.digest.outputs`，`verify` 用 `--expect-sha256=… --expect-bytes=…` 消费它，并保留 `--file=` 作为可选交叉校验（若 checkout 与记录值不一致会直接报 `INVALID`）。这样 `verify` 的结论只取决于“线上字节是否等于刚构建的字节”。
 
 ### 需要做的两件一次性设置 / Two one-time settings
 
@@ -59,7 +60,7 @@ https://dingdang66686.github.io/dsh-market-index/index.json                     
 
 - **GitHub 会在仓库 60 天没有任何活动后自动停掉定时工作流。** 本流水线保留“最多 7 天一次”的心跳提交（见上一步），所以只要流水线还在跑，仓库就不会累积到 60 天无活动；若真被停掉，去 Actions 页面点一次 **Enable workflow** 即可。心跳提交带 `[skip ci]`，因此这段时间 `Validate index` 不会因为心跳提交而运行。
 - 定时任务是尽力而为：高负载时可能延迟数十分钟，极端情况下会跳过某次。
-- `@main` 在 jsDelivr 上最长缓存 12 小时（已有 purge 步骤缓解）；raw 地址缓存约 5 分钟。想立即生效就用 raw 地址。
+- ⚠️ `@main` 在 jsDelivr 上最长缓存 12 小时，purge 接口也可能被限流；此时 CDN 会继续返回上一版，而 raw 地址（约 5 分钟缓存）早已是新版。流水线只在 raw 地址上设卡，CDN 落后时给一条 warning 注解而不是让运行失败——这也是为什么**推荐用 raw 地址**作为索引源。
 - 索引内容会随上游目录与 npm registry 变化而变化，不保证与上一次逐字节相同。
 
 ## 生成方式 / How it is generated

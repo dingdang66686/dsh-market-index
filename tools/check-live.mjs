@@ -1,15 +1,24 @@
-// Verify the published index URLs serve exactly the committed bytes.
+// Verify the published index URLs serve exactly the freshly built bytes.
 //
 // DSH refuses a source that redirects or does not answer 2xx, so for every required URL this
-// asserts: status 200, location absent, byte length identical to the local file, sha256
+// asserts: status 200, location absent, byte length identical to the expected build, sha256
 // identical. Raw GitHub content lags a fresh push by up to a couple of minutes, so required
 // URLs are retried.
+//
+// The expected bytes come from --expect-sha256/--expect-bytes (what the build job recorded for the
+// file it pushed) when given, and from --file otherwise. Preferring the recorded digest removes a
+// race: a checkout of `main` taken before the push would compare the published bytes against the
+// previous build and fail on exactly the runs that changed the index.
+//
+// Optional URLs (the jsDelivr CDN, GitHub Pages) are reported and annotated, never fatal: their
+// freshness depends on third-party caches we do not control.
 //
 // Usage:
 //   node tools/check-live.mjs --file=index.json \
 //     --require=https://raw.githubusercontent.com/OWNER/REPO/main/index.json \
 //     --optional=https://OWNER.github.io/REPO/index.json \
 //     [--retries=9] [--delay-ms=20000]
+//   node tools/check-live.mjs --expect-sha256=<hex> --expect-bytes=<n> --require=...
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -25,15 +34,41 @@ for (const arg of process.argv.slice(2)) {
 }
 const one = (key, fallback) => collected.get(key)?.at(-1) ?? fallback;
 
-const FILE = path.resolve(one('file', path.join(ROOT, 'index.json')));
+const explicitFile = one('file', '');
+const EXPECT_SHA = one('expect-sha256', '').trim().toLowerCase();
+const EXPECT_BYTES = Number(one('expect-bytes', 0)) || 0;
 const REQUIRED = collected.get('require') ?? [];
 const OPTIONAL = collected.get('optional') ?? [];
 const RETRIES = Number(one('retries', 9));
 const DELAY_MS = Number(one('delay-ms', 20000));
 
-const local = await readFile(FILE);
-const wantedSha = createHash('sha256').update(local).digest('hex');
-console.log(`local file: ${FILE} (${local.length} bytes, sha256 ${wantedSha})`);
+const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+let wantedSha;
+let wantedBytes;
+if (EXPECT_SHA) {
+  if (!/^[0-9a-f]{64}$/u.test(EXPECT_SHA) || EXPECT_BYTES <= 0) {
+    console.error(`INVALID: --expect-sha256 must be 64 hex characters and --expect-bytes a positive integer (got ${JSON.stringify(EXPECT_SHA)}, ${JSON.stringify(EXPECT_BYTES)})`);
+    process.exit(1);
+  }
+  wantedSha = EXPECT_SHA;
+  wantedBytes = EXPECT_BYTES;
+  console.log(`expected build: ${wantedBytes} bytes, sha256 ${wantedSha} (recorded by the build job)`);
+  if (explicitFile) {
+    const local = await readFile(path.resolve(explicitFile));
+    if (local.length !== wantedBytes || sha256(local) !== wantedSha) {
+      console.error(`INVALID: ${explicitFile} does not match the recorded digest — the checkout is stale, so this comparison would be meaningless`);
+      process.exit(1);
+    }
+    console.log(`cross-checked against the checkout: ${explicitFile} matches`);
+  }
+} else {
+  const file = path.resolve(explicitFile || path.join(ROOT, 'index.json'));
+  const local = await readFile(file);
+  wantedSha = sha256(local);
+  wantedBytes = local.length;
+  console.log(`local file: ${file} (${wantedBytes} bytes, sha256 ${wantedSha})`);
+}
 console.log(`required URLs: ${REQUIRED.length}, optional URLs: ${OPTIONAL.length}`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -50,9 +85,9 @@ async function probe(url) {
   if (res.status !== 200) return { ok: false, detail: `HTTP ${res.status}${location ? ` -> ${location}` : ''}` };
   if (location) return { ok: false, detail: `HTTP 200 but redirects to ${location}` };
   const body = Buffer.from(await res.arrayBuffer());
-  const sha = createHash('sha256').update(body).digest('hex');
-  if (body.length !== local.length || sha !== wantedSha) {
-    return { ok: false, detail: `content mismatch: ${body.length} bytes / sha256 ${sha}` };
+  const sha = sha256(body);
+  if (body.length !== wantedBytes || sha !== wantedSha) {
+    return { ok: false, detail: `content mismatch: served ${body.length} bytes / sha256 ${sha}, expected ${wantedBytes} / ${wantedSha}` };
   }
   return { ok: true, detail: `200, no redirect, ${body.length} bytes, sha256 ${sha}` };
 }
@@ -74,20 +109,24 @@ for (let attempt = 1; attempt <= Math.max(1, RETRIES) && pending.length > 0; att
 
 let failed = false;
 for (const url of pending) {
-  console.error(`FAIL: required URL never served the committed bytes: ${url}`);
+  console.error(`FAIL: required URL never served the freshly built bytes: ${url}`);
   failed = true;
 }
 
 for (const url of OPTIONAL) {
   const result = await probe(url);
   console.log(`  ${result.ok ? '✓' : '…'} optional: ${url} — ${result.detail}`);
-  if (result.ok === false && /HTTP 404/u.test(result.detail)) {
-    console.log('    (optional URL not published yet — enable GitHub Pages, or ignore: the required URLs already work)');
+  if (!result.ok) {
+    const hint = /HTTP 404/u.test(result.detail)
+      ? 'optional URL not published yet — enable GitHub Pages, or ignore: the required URLs already work'
+      : 'this cache serves an older build — jsDelivr keeps @main for up to 12 h and is only refreshed by its purge endpoint, so this never fails the run';
+    console.log(`    (${hint})`);
+    console.log(`::warning title=Optional index URL behind::${url} — ${result.detail}`);
   }
 }
 
 if (failed) {
-  console.error('\nFAIL: the published index does not match the committed bytes yet.');
+  console.error('\nFAIL: the published index does not match the freshly built bytes yet.');
   process.exit(1);
 }
-console.log('\nOK: every required URL serves the committed bytes, with no redirect.');
+console.log('\nOK: every required URL serves the freshly built bytes, with no redirect.');

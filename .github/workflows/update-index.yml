@@ -32,6 +32,12 @@ jobs:
     name: Rebuild, validate, commit
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The digest of the index this job pushed. `verify` compares the published bytes against this
+    # instead of against its own checkout: a checkout taken before the push would hold the previous
+    # build and fail on exactly the runs that changed the index.
+    outputs:
+      index_sha256: ${{ steps.digest.outputs.sha256 }}
+      index_bytes: ${{ steps.digest.outputs.bytes }}
     steps:
       - uses: actions/checkout@v5
 
@@ -59,6 +65,20 @@ jobs:
 
       - name: Write the run report
         run: node tools/run-report.mjs
+
+      # Recorded before the commit step so the `verify` job has an authoritative expectation even
+      # when the decision below is to skip committing.
+      - name: Record the digest of the built index
+        id: digest
+        run: |
+          set -euo pipefail
+          sha=$(sha256sum index.json | cut -d' ' -f1)
+          bytes=$(wc -c < index.json | tr -d '[:space:]')
+          {
+            echo "sha256=$sha"
+            echo "bytes=$bytes"
+          } >> "$GITHUB_OUTPUT"
+          echo "index.json: $bytes bytes, sha256 $sha"
 
       - name: Commit the refresh
         id: commit
@@ -159,19 +179,33 @@ jobs:
         with:
           ref: main
 
-      # jsDelivr caches @main for 12 h; the purge endpoint is public and needs no token.
+      # jsDelivr caches @main for 12 h. Its public purge endpoint usually answers in seconds with
+      # "status": "finished", but it can also be throttled, so the response is printed and the CDN
+      # URL below stays advisory: a third-party cache must never fail this workflow.
       - name: Purge the jsDelivr cache for @main
         continue-on-error: true
-        run: curl -sS -m 90 "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" || true
+        run: |
+          for attempt in 1 2 3; do
+            response=$(curl -sS -m 90 "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" || true)
+            echo "purge attempt ${attempt}: ${response:0:300}"
+            case "$response" in
+              *'"status": "finished"'*|*'"status":"finished"'*) exit 0 ;;
+            esac
+            sleep 10
+          done
+          echo "::warning title=jsDelivr purge unconfirmed::the CDN may keep serving the previous build for up to 12 h; raw.githubusercontent.com is already correct"
 
       # DSH refuses a redirecting source, so this asserts 2xx, no redirect, and byte-identical
-      # content on every required URL. Raw GitHub content lags a fresh push by minutes, hence the
-      # generous retries: 12 attempts, 30 s apart, is about 6 minutes.
-      - name: Check the raw + CDN URLs against the committed bytes
+      # content. Only raw.githubusercontent.com is required: it is the canonical file and it goes
+      # fresh within seconds of a push. The CDN and Pages URLs are annotated rather than required,
+      # because their freshness depends on caches outside this repository — failing the run could
+      # not make them converge any faster than the purge above.
+      - name: Check the published URLs against the freshly built bytes
         run: |
           node tools/check-live.mjs \
-            --file=index.json \
+            --expect-sha256="${{ needs.build.outputs.index_sha256 }}" \
+            --expect-bytes="${{ needs.build.outputs.index_bytes }}" \
             --require="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/index.json" \
-            --require="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
+            --optional="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
             --optional="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/index.json" \
             --retries=12 --delay-ms=30000

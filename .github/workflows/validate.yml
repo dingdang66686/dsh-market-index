@@ -56,6 +56,6 @@ jobs:
           node tools/check-live.mjs \
             --file=index.json \
             --require="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/index.json" \
-            --require="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
+            --optional="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
             --optional="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/index.json" \
             --retries=3 --delay-ms=10000
