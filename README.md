@@ -12,14 +12,14 @@ An addable plugin-market index for **DeepSeek Harness → Plugins → Discover �
 添加这个地址作为索引源 / Add this URL as an index source:
 
 ```
-https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json  # 最及时：push 后几秒内生效
-https://cdn.jsdelivr.net/gh/dingdang66686/dsh-market-index@main/index.json       # 全球 CDN，application/json
-https://dingdang66686.github.io/dsh-market-index/index.json                       # 需在 Settings → Pages 开启
+https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json  # 推荐：最新，push 后几秒生效
+https://dingdang66686.github.io/dsh-market-index/index.json                       # GitHub Pages，内容与 raw 相同
+https://cdn.jsdelivr.net/gh/dingdang66686/dsh-market-index@main/index.json       # 全球 CDN，但可能长期停在旧版本
 ```
 
-已实测：raw 地址返回 `200`、**不重定向**，与仓库中的 `index.json` 逐字节一致（sha256 校验），并用官方解析器重新校验通过。**想要最新一版就用第一条**：jsDelivr 对 `@main` 的长期缓存最长 12 小时，每次流水线都会调用它的 purge 接口刷新，但 purge 也可能被限流，那时它会继续返回上一版。CDN 地址带 `application/json`，有些环境下读取更省事。
+已实测：三个地址都返回 `200` 且**不重定向**，字节数与仓库中的 `index.json` 校验一致，并用官方解析器重新校验通过。**推荐用第一条（raw）**：它每次构建后几分钟内就是新版本。Pages 内容与 raw 一致，只是更新要多等一次部署。jsDelivr 请当作“有机会变幻”的镜像——实测中它在流水线连续两次构建之后仍然返回最早那版（`purge` 接口调了也没刷掉 `@main`），流水线会把这种落后记录成 warning 注解而不是让运行失败。
 
-内容 / Contents：**2951 个插件 / 12634 个版本**，23 个分类、11 个能力标签，排序键 `stars`、`downloads`。实时统计见 [stats.json](stats.json)，最近一次运行见 [run-report.json](run-report.json)。
+内容 / Contents：约 **2950 个插件 / 1.26 万个版本**，23 个分类、11 个能力标签，排序键 `stars`、`downloads`。精确数字见 [stats.json](stats.json)，最近一次运行见 [run-report.json](run-report.json)。
 
 ## 自动更新 / Automated updates
 
@@ -53,14 +53,16 @@ https://dingdang66686.github.io/dsh-market-index/index.json                     
 
 ### 需要做的两件一次性设置 / Two one-time settings
 
-1. **Actions 写权限**：Settings → Actions → General → Workflow permissions → **Read and write permissions**。默认可能只有读权限，那样流水线会在推送那一步失败并给出明确报错。
-2. **GitHub Pages（可选）**：Settings → Pages → Source 选 **GitHub Actions**。不开启也不影响使用 —— raw 与 jsDelivr 两个地址本来就能用；未开启时 Pages 那一步会失败但不影响整体（`continue-on-error`）。
+两件都已在本仓库上完成并验证（见下方证据），换仓库/换账号时需要重做：
+
+1. **Actions 写权限**：Settings → Actions → General → Workflow permissions → **Read and write permissions**。默认可能只有读权限，那样流水线会在推送那一步失败并给出明确报错。✅ 已验证：流水线自己以 `github-actions[bot]` 身份把新的 `index.json` 推上来了。
+2. **GitHub Pages（可选）**：Settings → Pages → Source 选 **GitHub Actions**。不开启也不影响使用 —— raw 地址本来就能用；未开启时 Pages 那一步会失败但不影响整体（`continue-on-error`）。✅ 已验证：`https://dingdang66686.github.io/dsh-market-index/index.json` 返回 200 且与 raw 字节一致。
 
 ### 已知限制 / Caveats
 
 - **GitHub 会在仓库 60 天没有任何活动后自动停掉定时工作流。** 本流水线保留“最多 7 天一次”的心跳提交（见上一步），所以只要流水线还在跑，仓库就不会累积到 60 天无活动；若真被停掉，去 Actions 页面点一次 **Enable workflow** 即可。心跳提交带 `[skip ci]`，因此这段时间 `Validate index` 不会因为心跳提交而运行。
 - 定时任务是尽力而为：高负载时可能延迟数十分钟，极端情况下会跳过某次。
-- ⚠️ `@main` 在 jsDelivr 上最长缓存 12 小时，purge 接口也可能被限流；此时 CDN 会继续返回上一版，而 raw 地址（约 5 分钟缓存）早已是新版。流水线只在 raw 地址上设卡，CDN 落后时给一条 warning 注解而不是让运行失败——这也是为什么**推荐用 raw 地址**作为索引源。
+- ⚠️ **jsDelivr 的 `@main` 缓存不保证能刷掉。** 实测：连续两次构建之后它仍在返回最早的版本，`purge` 接口调用后也没有变化；raw 地址这时早已是新版。所以流水线只在 raw 上设卡，CDN 落后时给一条 warning 注解而不是让运行失败——这也是为什么**索引源请用 raw 地址**（或 Pages）。
 - 索引内容会随上游目录与 npm registry 变化而变化，不保证与上一次逐字节相同。
 
 ## 生成方式 / How it is generated
