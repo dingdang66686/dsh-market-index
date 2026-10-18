@@ -1,0 +1,12 @@
+# build inputs (regenerated every run)
+cache/
+catalog.json
+node_modules/
+_site/
+
+# local dry-run / verification scratch
+_dryrun/
+verify-scratch/
+
+# logs
+*.log

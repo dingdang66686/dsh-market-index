@@ -1,0 +1,25 @@
+{
+  "name": "dsh-market-index",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Format-1 DSH plugin market index generated from the awesome-dsh-plugin catalog (community, unofficial).",
+  "homepage": "https://cdn.jsdelivr.net/gh/dingdang66686/dsh-market-index@main/index.json",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dingdang66686/dsh-market-index.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "crawl": "node tools/crawl-packuments.mjs",
+    "build": "node tools/build-index.mjs",
+    "validate": "node tools/validate-index.mjs",
+    "report": "node tools/run-report.mjs",
+    "pipeline": "node tools/crawl-packuments.mjs --fresh && node tools/build-index.mjs && node tools/validate-index.mjs && node tools/run-report.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2"
+  }
+}

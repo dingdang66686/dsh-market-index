@@ -1,0 +1,61 @@
+name: Validate index
+
+# Cheap gate that runs on every change to the data or the tools: parse index.json with the real
+# published DSH parser, check the size limits, and (outside pull requests) confirm the published
+# URLs still serve exactly these bytes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'index.json'
+      - 'stats.json'
+      - 'run-report.json'
+      - 'index.html'
+      - 'tools/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Parse and check the index
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install the index validator
+        run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+
+      - name: Parse index.json with the published DSH parser
+        run: node tools/validate-index.mjs
+
+      - name: Check that the live URLs serve these bytes
+        if: github.event_name != 'pull_request'
+        run: |
+          node tools/check-live.mjs \
+            --file=index.json \
+            --require="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/index.json" \
+            --require="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
+            --optional="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/index.json" \
+            --retries=3 --delay-ms=10000

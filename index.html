@@ -50,6 +50,7 @@
   <tr><td>上游目录条目</td><td>5786（其中 2967 条发布到 npm）</td></tr>
   <tr><td>生成时间</td><td>2026-10-18</td></tr>
 </table>
+<p>本索引由 GitHub Actions 每 12 小时自动重建并校验（<a href="https://github.com/dingdang66686/dsh-market-index/actions">运行记录</a>，最近一次见 <a href="run-report.json">run-report.json</a>）。</p>
 
 <h2>数据来源 / Data sources</h2>
 <ul>
@@ -68,8 +69,10 @@
 <p><a href="https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/HEAD/docs/user/guide/plugin-market.md">DSH 官方文档：Plugin markets</a></p>
 
 <script>
-  var base = location.href.replace(/[^/]*$/, '');
-  var url = base + 'index.json';
+  // 从 Pages 访问时用当前目录；本地用 file:// 打开时没法相对引用，退回官方 raw 地址。
+  var canonical = 'https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json';
+  var url = (location.protocol === 'file:') ? canonical
+          : location.href.replace(/[^/]*$/, '') + 'index.json';
   document.getElementById('url').textContent = url;
   document.getElementById('copy').onclick = function () {
     navigator.clipboard.writeText(url).then(function () {

@@ -1,0 +1,177 @@
+name: Update index
+
+# Rebuilds the format-1 index from the live awesome-dsh-plugin catalog + the npm registry,
+# validates it with the real DSH parser, commits the refresh, and verifies the published URLs.
+#
+# The index this produces is only a directory of third-party plugins: listing is not a security
+# review, and DSH checks the file format, not the claims made by the entries.
+
+on:
+  schedule:
+    # GitHub cron is UTC only and may start late. 03:17 UTC = 11:17, 15:17 UTC = 23:17 Asia/Shanghai.
+    - cron: '17 3,15 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/update-index.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-index
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Rebuild, validate, commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install the index validator
+        run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+
+      # --fresh: a cached packument would freeze a plugin's version list forever.
+      - name: Crawl the catalog and the npm packuments
+        run: node tools/crawl-packuments.mjs --fresh --concurrency=12
+
+      - name: Build the format-1 index
+        run: node tools/build-index.mjs
+
+      - name: Validate with the published DSH parser
+        run: node tools/validate-index.mjs --url="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json"
+
+      - name: Write the run report
+        run: node tools/run-report.mjs
+
+      - name: Commit the refresh
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add index.json stats.json run-report.json
+          index_changed=0
+          if ! git diff --cached --quiet -- index.json; then
+            index_changed=1
+            echo "::notice title=Index changed::index.json was rebuilt with different content"
+          fi
+
+          # Skip the commit when the index is unchanged and the committed run report is fresh:
+          # stats.json/run-report.json always differ (they carry a timestamp), so committing them
+          # unconditionally would add two churn commits a day. A weekly heartbeat is kept because
+          # GitHub disables a scheduled workflow after 60 days without repository activity.
+          # `git show HEAD:` reads the tree of the checked-out commit, which works in a shallow
+          # clone (unlike history-based lookups such as `git log`).
+          previous_report=''
+          if git show HEAD:run-report.json > "$RUNNER_TEMP/previous-run-report.json" 2>/dev/null; then
+            previous_report="$RUNNER_TEMP/previous-run-report.json"
+          fi
+          decision=$(node tools/commit-decision.mjs \
+            --index-changed="$index_changed" \
+            --previous-report="$previous_report" \
+            --max-report-age-days=7)
+          case "$decision" in
+            commit:*)
+              # [skip ci] keeps this data-only push from re-running the Validate workflow.
+              git commit -q -m "Refresh index ($(date -u '+%Y-%m-%d %H:%MZ')) [skip ci]"
+              if ! git push; then
+                echo "::error title=Cannot push::Set Settings -> Actions -> General -> Workflow permissions to 'Read and write permissions', then re-run this workflow."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::notice title=Nothing to commit::$decision"
+              ;;
+          esac
+
+      # Pages is a bonus: raw.githubusercontent.com and the jsDelivr CDN already serve the index.
+      # Both Pages steps below are allowed to fail so that anything Pages-related (it needs a
+      # one-time enablement in the repository settings) can never fail this job and thereby skip
+      # the `verify` job, nor delay the index refresh that has already been pushed.
+      - name: Stage the GitHub Pages site
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp index.html index.json stats.json run-report.json .nojekyll _site/
+
+      - uses: actions/upload-pages-artifact@v5
+        continue-on-error: true
+        with:
+          path: _site
+          include-hidden-files: true
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # Pages must be enabled once (Settings -> Pages -> Source: GitHub Actions). Until then this job
+    # fails without affecting the index itself or the run conclusion.
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  verify:
+    name: Verify the published URLs
+    needs: [build, deploy]
+    # Runs whenever the index was built, even if the optional Pages deploy failed or was skipped
+    # (Pages needs a one-time enablement). This does not rely on the subtle interaction between a
+    # `continue-on-error` dependency and `needs`: the live check is the gate that must never be lost.
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # ref: main, not the default trigger-time commit: `build` has just pushed a new index to
+      # main, and this job must compare the published bytes against the file main holds *now*.
+      # Without it the check would fail on exactly the runs that changed the index and pass
+      # vacuously on the runs that did not.
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      # jsDelivr caches @main for 12 h; the purge endpoint is public and needs no token.
+      - name: Purge the jsDelivr cache for @main
+        continue-on-error: true
+        run: curl -sS -m 90 "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" || true
+
+      # DSH refuses a redirecting source, so this asserts 2xx, no redirect, and byte-identical
+      # content on every required URL. Raw GitHub content lags a fresh push by minutes, hence the
+      # generous retries: 12 attempts, 30 s apart, is about 6 minutes.
+      - name: Check the raw + CDN URLs against the committed bytes
+        run: |
+          node tools/check-live.mjs \
+            --file=index.json \
+            --require="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/index.json" \
+            --require="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/index.json" \
+            --optional="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/index.json" \
+            --retries=12 --delay-ms=30000
