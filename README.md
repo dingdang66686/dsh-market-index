@@ -9,9 +9,11 @@ An addable plugin-market index for **DeepSeek Harness → Plugins → Discover �
 添加这个地址作为索引源 / Add this URL as an index source:
 
 ```
-https://<user>.github.io/<repo>/index.json      # GitHub Pages（推荐，application/json）
-https://raw.githubusercontent.com/<user>/<repo>/main/index.json   # 备用（raw，无重定向）
+https://raw.githubusercontent.com/dingdang66686/dsh-market-index/main/index.json   # 立即可用
+https://dingdang66686.github.io/dsh-market-index/index.json                        # 需在 Settings → Pages 开启
 ```
+
+已实测：raw 地址返回 `200`、**不重定向**、字节数与本地文件逐字节一致（sha256 校验）。
 
 内容 / Contents：**2951 个插件 / 12613 个版本**，23 个分类、11 个能力标签，排序键 `stars`、`downloads`。
 
