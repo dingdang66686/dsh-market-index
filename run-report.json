@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-11-15T20:25:10.923Z",
+  "generatedAt": "2026-11-16T11:17:32.843Z",
   "repository": "dingdang66686/dsh-market-index",
-  "runId": "43757822315",
+  "runId": "43856231651",
   "runAttempt": "1",
-  "runUrl": "https://github.com/dingdang66686/dsh-market-index/actions/runs/43757822315",
+  "runUrl": "https://github.com/dingdang66686/dsh-market-index/actions/runs/43856231651",
   "triggeredBy": "schedule",
-  "commit": "823027a",
+  "commit": "fb02490",
   "runner": "Linux X64",
   "node": "v24.22.2",
   "catalog": {
     "url": "https://awesome-dsh-plugin.com/plugins.json",
     "updated": "2026-11-15",
-    "entries": 11287
+    "entries": 11332
   },
   "index": {
-    "bytes": 8961377,
-    "sha256": "87b4657c57a8ec3488beeb42402ddd9f3b82c4a9b94042fdda19207a76d86f5e",
+    "bytes": 8967007,
+    "sha256": "75319f87b61b3295f610d0c1aab77221422363d70e3ba7f73d3d7d7ecd5f50a9",
     "plugins": 5607,
-    "versions": 23324,
+    "versions": 23382,
     "categories": 23,
     "labels": 11
   },
@@ -26,6 +26,6 @@
     "withoutPackument": 0,
     "notFoundOnNpm": 2,
     "noUsableVersion": 26,
-    "previousPlugins": 5606
+    "previousPlugins": 5607
   }
 }
